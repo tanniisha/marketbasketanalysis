@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Algorithm Comparison Demo</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        h1 { margin-top: 0; color: #111827; }
+        .btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn:hover { background: #4338ca; }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        input {
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .result-box {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+        }
+        .winner {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #059669;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Apriori vs FP-Growth Comparison</h1>
+        <p>This demonstration tool runs both algorithms on the backend to compare their execution times.</p>
+        
+        <div class="form-group" style="margin-top: 2rem;">
+            <button id="loadBtn" class="btn" onclick="loadDataset()">1. Load Default Dataset</button>
+            <span id="loadStatus" style="margin-left: 1rem; color: #4b5563;"></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>2. Configure Parameters</h2>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <div class="form-group">
+                <label>Minimum Support</label>
+                <input type="number" id="minSup" value="0.02" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Minimum Confidence</label>
+                <input type="number" id="minConf" value="0.2" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Minimum Lift</label>
+                <input type="number" id="minLift" value="1.0" step="0.1">
+            </div>
+        </div>
+        <button id="compareBtn" class="btn" onclick="runComparison()" disabled style="margin-top: 1rem;">
+            3. Run Comparison
+        </button>
+        <span id="compareStatus" style="margin-left: 1rem; color: #4b5563;"></span>
+
+        <div id="result" class="result-box" style="display: none;">
+            <h3>Results:</h3>
+            <p><strong>Apriori Time:</strong> <span id="aprioriTime"></span> seconds</p>
+            <p><strong>FP-Growth Time:</strong> <span id="fpTime"></span> seconds</p>
+            <div class="winner" id="winner"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadDataset() {
+            const btn = document.getElementById('loadBtn');
+            const status = document.getElementById('loadStatus');
+            btn.disabled = true;
+            status.innerText = "Loading...";
+            
+            try {
+                const res = await fetch('/load_default_dataset', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    status.innerText = `Dataset loaded! (${data.transactions_count} transactions)`;
+                    status.style.color = "#059669";
+                    document.getElementById('compareBtn').disabled = false;
+                } else {
+                    throw new Error(data.detail);
+                }
+            } catch (e) {
+                status.innerText = `Error: ${e.message}`;
+                status.style.color = "red";
+                btn.disabled = false;
+            }
+        }
+
+        async function runComparison() {
+            const btn = document.getElementById('compareBtn');
+            const status = document.getElementById('compareStatus');
+            const resultBox = document.getElementById('result');
+            
+            btn.disabled = true;
+            status.innerText = "Running algorithms (this may take a moment)...";
+            resultBox.style.display = 'none';
+
+            const payload = {
+                min_support: parseFloat(document.getElementById('minSup').value),
+                min_confidence: parseFloat(document.getElementById('minConf').value),
+                min_lift: parseFloat(document.getElementById('minLift').value)
+            };
+
+            try {
+                const res = await fetch('/analyze/compare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    status.innerText = "";
+                    document.getElementById('aprioriTime').innerText = data.comparison.apriori_time_seconds.toFixed(4);
+                    document.getElementById('fpTime').innerText = data.comparison.fpgrowth_time_seconds.toFixed(4);
+                    
+                    const winnerText = data.comparison.faster_algorithm;
+                    let speedup = 0;
+                    if (winnerText === 'FP-Growth') {
+                        speedup = data.comparison.apriori_time_seconds / data.comparison.fpgrowth_time_seconds;
+                    } else {
+                        speedup = data.comparison.fpgrowth_time_seconds / data.comparison.apriori_time_seconds;
+                    }
+
+                    document.getElementById('winner').innerText = 
+                        `🚀 Winner: ${winnerText} (Approx. ${speedup.toFixed(1)}x faster)`;
+                    
+                    resultBox.style.display = 'block';
+                } else {
+                    throw new Error(data.detail);
+                }
+            } catch (e) {
+                status.innerText = `Error: ${e.message}`;
+                status.style.color = "red";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
